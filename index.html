@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>THEATER SCHEDULER</title>
+  <!-- Tailwind CSS CDN (빌드 없이 디자인을 적용하기 위함) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @font-face {
+        font-family: 'Mulmaru';
+        src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2601-4@1.1/Mulmaru.woff2') format('woff2');
+        font-weight: normal;
+        font-display: swap;
+    }
+    body {
+        font-family: 'Mulmaru', sans-serif !important;
+        background-color: #050505;
+        color: #ffcc00;
+        margin: 0;
+        overflow-x: hidden;
+    }
+    /* 글로벌 이펙트 스타일 */
+    .airport-glow { text-shadow: 0 0 10px rgba(255, 204, 0, 0.4); }
+    .blink-now { animation: blink 1.5s infinite; }
+    .blink-warning { animation: blink-warn 2s infinite; }
+    .alarm-glow { animation: alarm-glow 1.5s infinite; }
+    
+    @keyframes blink { 
+      0%, 100% { opacity: 1; text-shadow: 0 0 15px rgba(239, 68, 68, 0.8); } 
+      50% { opacity: 0.5; text-shadow: none; } 
+    }
+    @keyframes blink-warn { 
+      0%, 100% { opacity: 1; text-shadow: 0 0 10px rgba(251, 146, 60, 0.8); } 
+      50% { opacity: 0.6; text-shadow: none; } 
+    }
+    @keyframes alarm-glow { 
+      0%, 100% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.6); border-color: rgba(239,68,68,1); } 
+      50% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); border-color: rgba(239,68,68,0.5); } 
+    }
+  </style>
+</head>
+<body class="selection:bg-amber-900">
+
+  <!-- 1. 입력 화면 (설정 모드) -->
+  <div id="view-input" class="min-h-screen bg-slate-900 text-slate-200 p-8">
+    <div class="max-w-4xl mx-auto">
+      <header class="flex items-center gap-3 mb-8">
+        <i data-lucide="film" class="w-10 h-10 text-amber-400"></i>
+        <h1 class="text-3xl font-bold tracking-tight text-white">영화관 시간표 설정</h1>
+      </header>
+      
+      <div class="bg-slate-800 rounded-xl p-6 shadow-2xl border border-slate-700">
+        <label class="block text-sm font-medium text-amber-400 mb-2">
+          엑셀 데이터를 아래에 붙여넣어 주세요
+        </label>
+        <textarea id="raw-data" class="w-full h-80 bg-slate-950 border border-slate-700 rounded-lg p-4 text-sm text-slate-300 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors whitespace-pre" placeholder="관\t입장\t광고\t본영화\t등급\t\t관\t퇴장\t엔딩\t영화"></textarea>
+        
+        <div class="mt-6 flex flex-col sm:flex-row justify-between items-center gap-6 border-t border-slate-700 pt-6">
+          <div class="flex flex-wrap items-center gap-6">
+            <div class="flex items-center gap-3">
+              <label class="text-sm text-slate-300">예고 표시 (분 전):</label>
+              <input id="warning-mins" type="number" min="1" max="60" value="10" class="w-20 bg-slate-950 border border-slate-600 rounded p-2 text-center text-amber-400 font-bold focus:outline-none focus:border-amber-400" />
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="text-sm text-slate-300">알람 지속 시간 (초):</label>
+              <input id="alarm-duration" type="number" min="5" max="300" value="60" class="w-20 bg-slate-950 border border-slate-600 rounded p-2 text-center text-amber-400 font-bold focus:outline-none focus:border-amber-400" />
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="text-sm text-amber-400 flex items-center gap-2 cursor-pointer font-bold bg-amber-900/30 px-3 py-2 rounded border border-amber-900/50 hover:bg-amber-900/50 transition-colors">
+                <input id="native-notify" type="checkbox" class="w-4 h-4 accent-amber-500 cursor-pointer" />
+                윈도우(OS) 기본 알림 사용
+              </label>
+            </div>
+          </div>
+          <button id="start-btn" class="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold py-3 px-6 rounded-lg transition-transform hover:scale-105 active:scale-95 shrink-0">
+            <i data-lucide="play" class="w-5 h-5"></i>
+            전광판 시작하기
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 전광판 화면 (Board 모드) -->
+  <div id="view-board" class="hidden min-h-screen p-4 sm:p-8">
+    <header class="flex flex-col md:flex-row justify-between items-center mb-8 border-b-2 border-[#ffcc00] pb-6">
+      <div class="flex items-center gap-4 mb-4 md:mb-0">
+        <div onclick="handleMonitorClick()" title="3번 연속 클릭하여 알람 테스트" class="cursor-pointer hover:scale-110 active:scale-95 transition-transform">
+          <i data-lucide="monitor" class="w-10 h-10 airport-glow text-[#ffcc00]"></i>
+        </div>
+        <div>
+          <h1 class="text-3xl sm:text-4xl font-black tracking-[0.2em] airport-glow text-[#ffcc00]">THEATER SCHEDULER</h1>
+          <p class="text-[#888] tracking-widest text-sm mt-1">DEPARTURES & ARRIVALS</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-6">
+        <div class="flex items-center gap-2 text-2xl sm:text-4xl font-bold airport-glow tracking-widest bg-[#111] px-4 py-2 rounded-lg border border-[#333] text-[#ffcc00]">
+          <i data-lucide="clock" class="w-8 h-8"></i>
+          <span id="clock-hhmm">00:00</span>
+          <span id="clock-ss" class="text-sm text-[#666] animate-pulse">:00</span>
+        </div>
+        
+        <div class="flex gap-2">
+          <button id="sound-toggle-btn" class="p-3 rounded-lg border border-[#ffcc00] bg-[#1a1a00] hover:bg-[#332a00] transition-colors text-[#ffcc00]" title="알람 소리 토글" onclick="toggleSound()">
+            <i data-lucide="volume-2" id="sound-icon" class="w-6 h-6"></i>
+          </button>
+          <button class="p-3 rounded-lg border border-[#444] hover:border-[#ffcc00] hover:bg-[#1a1a00] transition-colors text-[#ffcc00]" title="설정으로 돌아가기" onclick="goToSettings()">
+            <i data-lucide="settings" class="w-6 h-6"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="bg-[#0a0a0a] rounded-xl border border-[#222] overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)]">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left whitespace-nowrap">
+          <thead>
+            <tr class="bg-[#111] text-[#888] text-sm tracking-widest">
+              <th class="px-6 py-4 font-normal">ALARM</th>
+              <th class="px-6 py-4 font-normal">TIME</th>
+              <th class="px-6 py-4 font-normal">SCREEN</th>
+              <th class="px-6 py-4 font-normal">CURRENT STAGE</th>
+              <th class="px-6 py-4 font-normal">MOVIE TITLE</th>
+              <th class="px-6 py-4 font-normal text-right">STATUS</th>
+            </tr>
+          </thead>
+          <tbody id="board-tbody" class="divide-y divide-[#1a1a1a]">
+            <!-- JS 렌더링 영역 -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 알람 오버레이 -->
+  <div id="alarm-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div id="alarm-container" class="flex flex-col gap-6 max-h-screen overflow-y-auto w-full max-w-2xl py-8">
+      <!-- JS 렌더링 영역 -->
+    </div>
+  </div>
+
+  <script>
+    // --- 초기 데이터 세팅 ---
+    const DEFAULT_DATA = `관\t입장\t광고\t본영화\t등급\t\t관\t퇴장\t엔딩\t영화
+1\t9:20\t9:27\t9:40\t12\t\t\t\t\t왕과 사는 남자(2D)
+3\t9:20\t9:27\t9:40\t15\t\t\t\t\t첨밀밀(디지털)
+4\t9:50\t9:57\t10:10\t12\t\t\t\t\t프로젝트 헤일메리(디지털)
+2\t10:20\t10:28\t10:40\t12\t\t\t\t\t왕과 사는 남자(2D)
+\t\t\t\t\t\t1\t11:37\t11:32\t왕과 사는 남자(2D)
+\t\t\t\t\t\t3\t11:36\t11:34\t첨밀밀(디지털)`;
+
+    document.getElementById('raw-data').value = DEFAULT_DATA;
+
+    // --- 앱 상태(State) ---
+    let sessions = [];
+    let audioCtx = null;
+    let soundEnabled = true;
+    let alarmedEvents = new Set();
+    let warningMinutes = 10;
+    let alarmDuration = 60;
+    let activeAlarms = [];
+    let nativeNotificationEnabled = false;
+    let showPast = false;
+    
+    let mainInterval = null;
+    let audioLoopInterval = null;
+
+    // --- 시간 헬퍼 함수 ---
+    const getCurrentHHMM = (date) => {
+      return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    };
+
+    const getRelativeMinutes = (hhmm) => {
+      const parts = hhmm.split(':');
+      let h = parseInt(parts[0], 10);
+      let m = parseInt(parts[1], 10);
+      let mins = h * 60 + m;
+      if (mins < 360) mins += 1440; // 06:00 기준 영업일 처리
+      return mins - 360; 
+    };
+
+    // --- 알람(사운드) ---
+    const triggerAlarm = (ctx) => {
+      if (ctx.state === 'suspended') ctx.resume();
+      const playBeep = (timeOffset) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1000, ctx.currentTime + timeOffset);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime + timeOffset);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + timeOffset + 0.3);
+        osc.start(ctx.currentTime + timeOffset);
+        osc.stop(ctx.currentTime + timeOffset + 0.3);
+      };
+      playBeep(0);
+      playBeep(0.4);
+      playBeep(0.8);
+    };
+
+    const updateAudioLoop = () => {
+      if (activeAlarms.length > 0 && soundEnabled && audioCtx) {
+        if (!audioLoopInterval) {
+          triggerAlarm(audioCtx);
+          audioLoopInterval = setInterval(() => triggerAlarm(audioCtx), 3000);
+        }
+      } else {
+        if (audioLoopInterval) {
+          clearInterval(audioLoopInterval);
+          audioLoopInterval = null;
+        }
+      }
+    };
+
+    // --- 데이터 파싱 ---
+    const parseData = () => {
+      const rawText = document.getElementById('raw-data').value;
+      const lines = rawText.trim().split('\n');
+      if (lines.length < 2) return;
+
+      const headers = lines[0].split('\t').map(h => h.trim());
+      const idx = {
+        screen1: headers.indexOf('관') !== -1 ? headers.indexOf('관') : 0,
+        entry: headers.indexOf('입장') !== -1 ? headers.indexOf('입장') : 1,
+        ad: headers.indexOf('광고') !== -1 ? headers.indexOf('광고') : 2,
+        feature: headers.indexOf('본영화') !== -1 ? headers.indexOf('본영화') : 3,
+        screen2: headers.lastIndexOf('관') !== -1 && headers.lastIndexOf('관') !== headers.indexOf('관') ? headers.lastIndexOf('관') : 6,
+        exit: headers.indexOf('퇴장') !== -1 ? headers.indexOf('퇴장') : 7,
+        ending: headers.indexOf('엔딩') !== -1 ? headers.indexOf('엔딩') : 8,
+        movie: headers.indexOf('영화') !== -1 ? headers.indexOf('영화') : 9,
+      };
+
+      let parsedSessions = [];
+      let eventIdCounter = 0;
+      let sessionIdCounter = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split('\t').map(c => c.trim());
+        if (cols.length === 0 || cols.every(c => !c)) continue;
+
+        const screen = cols[idx.screen1] || cols[idx.screen2] || "-";
+        let movie = cols[idx.movie];
+        
+        if (!movie) {
+          for(let j = cols.length - 1; j >= 0; j--) {
+            if(cols[j] && !cols[j].match(/^\d{1,2}:\d{2}$/)) {
+              movie = cols[j];
+              break;
+            }
+          }
+        }
+        if (!movie) movie = "Unknown";
+
+        let sessionEvents = [];
+
+        const addEvent = (colIndex, type) => {
+          const timeVal = cols[colIndex];
+          if (timeVal && timeVal.match(/^\d{1,2}:\d{2}$/)) {
+            const [h, m] = timeVal.split(':');
+            const paddedTime = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+            sessionEvents.push({
+              uniqueId: `evt-${eventIdCounter++}`,
+              time: paddedTime,
+              type
+            });
+          }
+        };
+
+        addEvent(idx.entry, '입장');
+        addEvent(idx.ad, '광고');
+        addEvent(idx.feature, '본영화');
+        addEvent(idx.ending, '엔딩');
+        addEvent(idx.exit, '퇴장');
+
+        if (sessionEvents.length > 0) {
+          sessionEvents.sort((a, b) => getRelativeMinutes(a.time) - getRelativeMinutes(b.time));
+          parsedSessions.push({
+            id: `session-${sessionIdCounter++}`,
+            screen,
+            movie,
+            events: sessionEvents,
+            alarmEnabled: true
+          });
+        }
+      }
+
+      parsedSessions.sort((a, b) => getRelativeMinutes(a.events[0].time) - getRelativeMinutes(b.events[0].time));
+      sessions = parsedSessions;
+    };
+
+    // --- UI 렌더링 헬퍼 ---
+    const getTypeStyle = (type) => {
+      switch(type) {
+        case '본영화': return { badge: 'text-amber-400 border-amber-400 font-bold bg-amber-400/10', time: 'text-[#ffcc00] bg-[#000] airport-glow border border-[#222]' };
+        case '퇴장': return { badge: 'text-red-400 border-red-400 font-bold bg-red-400/10', time: 'text-[#f87171] bg-[#000] airport-glow border border-[#222]' };
+        case '입장': 
+        case '광고': 
+        case '엔딩': 
+          return { badge: 'text-gray-500 border-gray-700', time: 'text-[#888] bg-transparent border border-transparent' };
+        default: return { badge: 'text-gray-500 border-gray-700', time: 'text-[#888] bg-transparent border border-transparent' };
+      }
+    };
+
+    const renderBoard = (now) => {
+      const currentHHMM = getCurrentHHMM(now);
+      const currentRelativeMins = getRelativeMinutes(currentHHMM);
+      const tbody = document.getElementById('board-tbody');
+      
+      let html = '';
+
+      // 종료된 상영 갯수 계산
+      const pastCount = sessions.filter(session => {
+        const lastEvent = session.events[session.events.length - 1];
+        return (getRelativeMinutes(lastEvent.time) - currentRelativeMins) < 0;
+      }).length;
+
+      if (pastCount > 0) {
+        html += `
+          <tr class="bg-[#0a0a0a] hover:bg-[#111] cursor-pointer transition-colors" onclick="toggleShowPast()">
+            <td colspan="6" class="px-6 py-3 text-center text-[#666] text-sm tracking-widest border-b border-[#222]">
+              <div class="flex items-center justify-center gap-2">
+                <i data-lucide="${showPast ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4"></i>
+                종료된 상영 ${pastCount}건 ${showPast ? '접기' : '펼치기'}
+              </div>
+            </td>
+          </tr>
+        `;
+      }
+
+      sessions.forEach(session => {
+        let displayEvent = session.events[0];
+        const pastOrNowEvents = session.events.filter(e => getRelativeMinutes(e.time) <= currentRelativeMins);
+        
+        if (pastOrNowEvents.length > 0) {
+          displayEvent = pastOrNowEvents[pastOrNowEvents.length - 1];
+        }
+
+        const eventRelativeMins = getRelativeMinutes(displayEvent.time);
+        const diff = eventRelativeMins - currentRelativeMins; 
+        const isLastEvent = session.events[session.events.length - 1].uniqueId === displayEvent.uniqueId;
+        
+        const isPast = diff < 0 && isLastEvent;
+        if (isPast && !showPast) return;
+
+        const isNow = diff === 0;
+        const isSoon = diff > 0 && diff <= warningMinutes;
+        const isOngoing = diff < 0 && !isLastEvent;
+        const isMain = displayEvent.type === '본영화' || displayEvent.type === '퇴장';
+        const style = getTypeStyle(displayEvent.type);
+
+        let rowClass = "hover:bg-[#111]";
+        if (isNow) rowClass = "bg-[#2a1111]";
+        else if (isSoon) rowClass = "bg-[#1a1505]";
+        else if (isOngoing) rowClass = "bg-[#0a1520]";
+        else if (isPast) rowClass = "opacity-40 hover:opacity-100";
+
+        const textClass = (isMain || isOngoing || isNow) ? 'text-white' : 'text-[#888]';
+
+        const alarmBtnClass = session.alarmEnabled 
+          ? 'border-[#ffcc00] text-[#ffcc00] hover:bg-[#332a00]' 
+          : 'border-[#444] text-[#555] hover:border-[#666]';
+        const alarmIcon = session.alarmEnabled ? 'bell' : 'bell-off';
+
+        let statusHtml = '';
+        if (isNow) statusHtml = `<span class="text-red-500 font-bold tracking-widest blink-now text-xl">NOW</span>`;
+        else if (isSoon) statusHtml = `<span class="text-orange-400 font-bold tracking-widest blink-warning text-lg">SOON (${diff}M)</span>`;
+        else if (isOngoing) statusHtml = `<span class="text-blue-400 font-bold tracking-widest opacity-90">ONGOING</span>`;
+        else if (isPast) statusHtml = `<span class="text-[#555] font-bold tracking-widest">PAST</span>`;
+        else statusHtml = `<span class="text-green-500 font-bold tracking-widest opacity-80">UPCOMING</span>`;
+
+        html += `
+          <tr class="transition-colors duration-500 ${rowClass} ${textClass}">
+            <td class="px-6 py-4">
+              <button onclick="toggleSessionAlarm('${session.id}')" class="p-2 rounded-full border transition-colors ${alarmBtnClass}" title="알람 토글">
+                <i data-lucide="${alarmIcon}" class="w-5 h-5"></i>
+              </button>
+            </td>
+            <td class="px-6 py-4">
+              <span class="font-bold tracking-wider px-2 py-1 rounded text-xl ${style.time}">${displayEvent.time}</span>
+            </td>
+            <td class="px-6 py-4">
+              <span class="px-3 py-1 bg-[#1a1a1a] rounded text-lg ${isMain ? 'text-[#ddd] font-bold' : 'text-[#888]'}">${session.screen}관</span>
+            </td>
+            <td class="px-6 py-4">
+              <span class="px-2 py-1 border rounded whitespace-nowrap text-sm ${style.badge}">${displayEvent.type}</span>
+            </td>
+            <td class="px-6 py-4 w-full">
+              <span class="tracking-wide text-lg ${isMain ? 'text-white font-bold' : 'text-[#888] opacity-80'}">${session.movie}</span>
+            </td>
+            <td class="px-6 py-4 text-right">${statusHtml}</td>
+          </tr>
+        `;
+      });
+
+      if (sessions.length === 0) {
+        html = `<tr><td colspan="6" class="text-center py-12 text-[#555] tracking-widest">NO SCHEDULED EVENTS</td></tr>`;
+      }
+
+      tbody.innerHTML = html;
+      lucide.createIcons(); // 새로 생성된 DOM에 아이콘 적용
+    };
+
+    const renderAlarms = () => {
+      const overlay = document.getElementById('alarm-overlay');
+      const container = document.getElementById('alarm-container');
+      
+      if (activeAlarms.length === 0) {
+        overlay.classList.add('hidden');
+        return;
+      }
+      
+      overlay.classList.remove('hidden');
+      
+      let html = '';
+      activeAlarms.forEach(alarm => {
+        html += `
+          <button onclick="dismissAlarm('${alarm.id}')" class="bg-[#1a0505] border-2 rounded-2xl p-8 transform transition-transform hover:scale-[1.02] active:scale-95 text-center cursor-pointer alarm-glow flex flex-col items-center group relative overflow-hidden">
+            <div class="absolute inset-0 bg-red-600/10 group-hover:bg-red-600/20 transition-colors pointer-events-none"></div>
+            <div class="text-red-500 font-bold tracking-widest mb-4 flex justify-center items-center gap-3 text-2xl">
+              <i data-lucide="bell" class="w-8 h-8 animate-bounce"></i> 
+              <span>ALARM - ${alarm.type}</span>
+            </div>
+            <div class="text-5xl text-white font-black tracking-wider mb-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
+              ${alarm.movie}
+            </div>
+            <div class="text-2xl text-[#ccc] mb-8 bg-black/50 px-6 py-2 rounded-lg border border-[#333]">
+              ${alarm.screen}관 <span class="mx-3 text-[#555]">|</span> ${alarm.time}
+            </div>
+            <div class="text-lg text-red-200 bg-red-900/40 border border-red-500/30 py-2 px-6 rounded-full inline-block group-hover:bg-red-500 group-hover:text-white transition-colors">
+              클릭하여 알람 종료
+            </div>
+          </button>
+        `;
+      });
+      container.innerHTML = html;
+      lucide.createIcons();
+    };
+
+    // --- 메인 타이머 로직 ---
+    const checkAndTick = () => {
+      const now = new Date();
+      
+      // 시계 업데이트
+      document.getElementById('clock-hhmm').innerText = getCurrentHHMM(now);
+      document.getElementById('clock-ss').innerText = `:${String(now.getSeconds()).padStart(2, '0')}`;
+      
+      const currentHHMM = getCurrentHHMM(now);
+      const newAlarms = [];
+      
+      sessions.forEach(session => {
+        session.events.forEach(event => {
+          if (event.time === currentHHMM && !alarmedEvents.has(event.uniqueId)) {
+            if (session.alarmEnabled) {
+              newAlarms.push({
+                id: event.uniqueId,
+                movie: session.movie,
+                screen: session.screen,
+                type: event.type,
+                time: event.time
+              });
+
+              if (nativeNotificationEnabled && Notification.permission === "granted") {
+                new Notification(`[${event.type}] ${session.movie}`, {
+                  body: `${session.screen}관 - ${event.time}`,
+                  icon: 'https://cdn-icons-png.flaticon.com/512/3163/3163478.png'
+                });
+              }
+            }
+            alarmedEvents.add(event.uniqueId);
+          }
+        });
+      });
+
+      if (newAlarms.length > 0) {
+        activeAlarms = [...activeAlarms, ...newAlarms];
+        renderAlarms();
+        updateAudioLoop();
+
+        setTimeout(() => {
+          activeAlarms = activeAlarms.filter(a => !newAlarms.find(na => na.id === a.id));
+          renderAlarms();
+          updateAudioLoop();
+        }, alarmDuration * 1000);
+      }
+
+      renderBoard(now);
+    };
+
+    // --- 이벤트 핸들러 (전역) ---
+    document.getElementById('start-btn').addEventListener('click', () => {
+      warningMinutes = parseInt(document.getElementById('warning-mins').value) || 10;
+      alarmDuration = parseInt(document.getElementById('alarm-duration').value) || 60;
+      
+      parseData();
+      
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      alarmedEvents.clear();
+      activeAlarms = [];
+      
+      document.getElementById('view-input').classList.add('hidden');
+      document.getElementById('view-board').classList.remove('hidden');
+      
+      checkAndTick(); // 즉시 1회 실행
+      if(mainInterval) clearInterval(mainInterval);
+      mainInterval = setInterval(checkAndTick, 1000);
+    });
+
+    document.getElementById('native-notify').addEventListener('change', async (e) => {
+      if (e.target.checked) {
+        // 1. 브라우저 자체 지원 여부 검사
+        if (!("Notification" in window)) {
+          alert("현재 사용 중인 브라우저에서는 시스템(OS) 알림을 지원하지 않습니다.");
+          e.target.checked = false;
+          return;
+        }
+
+        // 2. 로컬 파일(file://) 보안 차단 예외 처리 추가
+        if (window.location.protocol === 'file:') {
+          alert("⚠️ 보안 정책 안내\n\n내 컴퓨터에서 직접 파일(file://)을 열었을 때는 브라우저가 시스템 알림을 강력 차단합니다.\n정상 작동 여부는 깃허브 페이지(https://)에 업로드하신 뒤 확인하실 수 있습니다!");
+          e.target.checked = false;
+          return;
+        }
+        
+        // 3. 권한 요청
+        try {
+          const permission = await Notification.requestPermission();
+          if (permission === "granted") {
+            nativeNotificationEnabled = true;
+          } else {
+            alert("알림 권한이 거부되었습니다. 브라우저 주소창 좌측의 자물쇠 아이콘을 눌러 알림을 허용해주세요.");
+            e.target.checked = false;
+            nativeNotificationEnabled = false;
+          }
+        } catch (error) {
+          console.error("Notification Error:", error);
+          alert("알림 권한을 요청하는 중 오류가 발생했습니다.");
+          e.target.checked = false;
+          nativeNotificationEnabled = false;
+        }
+      } else {
+        nativeNotificationEnabled = false;
+      }
+    });
+
+    window.toggleSessionAlarm = (id) => {
+      sessions = sessions.map(s => s.id === id ? { ...s, alarmEnabled: !s.alarmEnabled } : s);
+      renderBoard(new Date());
+    };
+
+    window.dismissAlarm = (id) => {
+      activeAlarms = activeAlarms.filter(a => a.id !== id);
+      renderAlarms();
+      updateAudioLoop();
+    };
+
+    window.toggleShowPast = () => {
+      showPast = !showPast;
+      renderBoard(new Date());
+    };
+
+    window.toggleSound = () => {
+      soundEnabled = !soundEnabled;
+      const btn = document.getElementById('sound-toggle-btn');
+      const icon = document.getElementById('sound-icon');
+      
+      if (soundEnabled) {
+        btn.classList.remove('border-[#444]', 'text-[#666]');
+        btn.classList.add('border-[#ffcc00]', 'bg-[#1a1a00]');
+        icon.setAttribute('data-lucide', 'volume-2');
+      } else {
+        btn.classList.remove('border-[#ffcc00]', 'bg-[#1a1a00]');
+        btn.classList.add('border-[#444]', 'text-[#666]');
+        icon.setAttribute('data-lucide', 'volume-x');
+      }
+      lucide.createIcons();
+      updateAudioLoop();
+    };
+
+    window.goToSettings = () => {
+      if(mainInterval) clearInterval(mainInterval);
+      if(audioLoopInterval) {
+        clearInterval(audioLoopInterval);
+        audioLoopInterval = null;
+      }
+      document.getElementById('view-board').classList.add('hidden');
+      document.getElementById('view-input').classList.remove('hidden');
+    };
+
+    let monitorClickCount = 0;
+    let monitorClickTimer = null;
+    window.handleMonitorClick = () => {
+      monitorClickCount++;
+      if (monitorClickTimer) clearTimeout(monitorClickTimer);
+
+      if (monitorClickCount >= 3) {
+        const testAlarm = {
+          id: `test-${Date.now()}`,
+          movie: "시스템 테스트 알람",
+          screen: "TEST",
+          type: "테스트",
+          time: getCurrentHHMM(new Date())
+        };
+        
+        activeAlarms.push(testAlarm);
+        renderAlarms();
+        updateAudioLoop();
+
+        if (nativeNotificationEnabled && Notification.permission === "granted") {
+          new Notification(`[테스트] 시스템 테스트 알람`, {
+            body: `TEST관 - ${testAlarm.time}`,
+            icon: 'https://cdn-icons-png.flaticon.com/512/3163/3163478.png'
+          });
+        }
+        
+        setTimeout(() => {
+          activeAlarms = activeAlarms.filter(a => a.id !== testAlarm.id);
+          renderAlarms();
+          updateAudioLoop();
+        }, alarmDuration * 1000);
+
+        monitorClickCount = 0;
+      } else {
+        monitorClickTimer = setTimeout(() => monitorClickCount = 0, 1000); 
+      }
+    };
+
+    // 아이콘 최초 적용
+    lucide.createIcons();
+  </script>
+</body>
+</html>
