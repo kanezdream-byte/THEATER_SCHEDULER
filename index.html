@@ -22,6 +22,16 @@
         margin: 0;
         overflow-x: hidden;
     }
+    
+    /* 스크롤바 숨기기 (기능은 유지) */
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    .no-scrollbar {
+        -ms-overflow-style: none;  /* IE, Edge */
+        scrollbar-width: none;  /* Firefox */
+    }
+
     /* 글로벌 이펙트 스타일 */
     .airport-glow { text-shadow: 0 0 10px rgba(255, 204, 0, 0.4); }
     .blink-now { animation: blink 1.5s infinite; }
@@ -138,7 +148,8 @@
 
   <!-- 3. 알람 오버레이 -->
   <div id="alarm-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-    <div id="alarm-container" class="flex flex-col gap-6 max-h-screen overflow-y-auto w-full max-w-2xl py-8">
+    <!-- no-scrollbar 클래스 추가됨 -->
+    <div id="alarm-container" class="flex flex-col gap-6 max-h-screen overflow-y-auto no-scrollbar w-full max-w-2xl py-8">
       <!-- JS 렌더링 영역 -->
     </div>
   </div>
